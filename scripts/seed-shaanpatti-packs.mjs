@@ -44,14 +44,11 @@ function loadFallbackWords() {
 }
 
 const PACK_META = {
-  spicy: { label: "Spicy", blurb: "Flirty teases" },
-  romantic: { label: "Romantic", blurb: "Soft dating energy" },
-  adult_18: { label: "Adult 18+", blurb: "Explicit NSFW", nsfw: true },
-  philosophy: { label: "Philosophy", blurb: "Deep / weird" },
-  parenthood: { label: "Parenthood", blurb: "Kids & family futures" },
-  finance: { label: "Finance", blurb: "Money habits" },
-  chaotic: { label: "Chaotic", blurb: "Party chaos" },
-  soft_roast: { label: "Soft Roast", blurb: "Light insult comedy" },
+  chaotic: { label: "Chaotic", blurb: "Emergency / absurd wrong answers" },
+  social: { label: "Socially unhinged", blurb: "Group-chat chaos" },
+  spicy: { label: "Spicy", blurb: "Adult wrong answers", nsfw: true },
+  fake_science: { label: "Fake expertise", blurb: "Confidently incorrect" },
+  desi: { label: "Desi chaos", blurb: "Indian friend-group energy" },
 };
 
 loadEnvLocal();

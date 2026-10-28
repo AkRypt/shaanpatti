@@ -167,8 +167,9 @@ function finishAnswering(lobby: Lobby) {
   lobby.currentRound.answerOrder = shuffleIds(players.map((p) => p.userId));
   lobby.currentRound.votes = {};
   lobby.currentRound.scoresDelta = {};
-  lobby.currentRound.hotseatVoterId = null;
-  lobby.gameState = GAME_STATE.REVEAL_ANON;
+  // Skip host "Start voting" gate — anonymous board is the voting screen.
+  lobby.currentRound.hotseatVoterId = players[0]?.userId || null;
+  lobby.gameState = GAME_STATE.VOTING;
 }
 
 function finishVoting(lobby: Lobby) {

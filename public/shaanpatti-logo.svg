@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Shaanpatti">
+  <defs>
+    <linearGradient id="spGrad" x1="12%" y1="8%" x2="88%" y2="92%">
+      <stop offset="0%" stop-color="#f4f0e6"/>
+      <stop offset="48%" stop-color="#c8f542"/>
+      <stop offset="100%" stop-color="#8fd94a"/>
+    </linearGradient>
+    <linearGradient id="spMark" x1="20%" y1="10%" x2="80%" y2="90%">
+      <stop offset="0%" stop-color="#d4ff5c"/>
+      <stop offset="100%" stop-color="#8fd94a"/>
+    </linearGradient>
+    <filter id="spGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Deep ink disc -->
+  <circle cx="256" cy="256" r="236" fill="#06140f"/>
+  <circle cx="256" cy="256" r="236" fill="none" stroke="rgba(214,245,180,0.18)" stroke-width="6"/>
+  <!-- Soft radial wash -->
+  <circle cx="180" cy="150" r="140" fill="rgba(200,245,66,0.12)"/>
+  <circle cx="340" cy="360" r="120" fill="rgba(47,120,78,0.28)"/>
+  <!-- Speech bubble = wrong answer -->
+  <g filter="url(#spGlow)">
+    <path
+      d="M148 150h216c28 0 50 22 50 50v118c0 28-22 50-50 50H250l-46 54-6-54h-50c-28 0-50-22-50-50V200c0-28 22-50 50-50z"
+      fill="#0c241c"
+      stroke="rgba(214,245,180,0.28)"
+      stroke-width="8"
+      stroke-linejoin="round"
+    />
+    <!-- Confident X (wrong answers only) -->
+    <path
+      d="M214 210 L298 294 M298 210 L214 294"
+      fill="none"
+      stroke="url(#spMark)"
+      stroke-width="36"
+      stroke-linecap="round"
+    />
+  </g>
+  <!-- Tiny accent spark -->
+  <circle cx="368" cy="168" r="14" fill="url(#spGrad)" opacity="0.95"/>
+</svg>

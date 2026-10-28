@@ -11,9 +11,8 @@ Wrong-answers-only party game — everyone writes a hilarious wrong answer, anon
 
 1. Lobby — packs + answer timer (default 120s) · Start (≥3)
 2. **Answering** — write a wrong answer (timer or until all done); host can skip question
-3. **Reveal anon** — shuffled anonymous board → host starts voting
-4. **Voting** — pick best answer (self-vote OK); required, no skip vote
-5. **Reveal names** — +1 per vote · cumulative scores → host Next
+3. **Voting** — shuffled anonymous board opens automatically when answers lock; pick best (self-vote OK); required, no skip vote
+4. **Reveal names** — +1 per vote · cumulative scores → host Next
 
 ## Stack
 

@@ -148,6 +148,17 @@ export default function LobbyPage() {
     else void lockAnswersIfNeeded(lobbyCode);
   }, [now, lobby?.gameState, lobby?.currentRound?.endsAt, local, lobbyCode]);
 
+  // Legacy / in-flight lobbies stuck on reveal_anon: open voting without a host tap.
+  useEffect(() => {
+    if (lobby?.gameState !== GAME_STATE.REVEAL_ANON || !lobby.currentRound) return;
+    if (local) {
+      localBeginVote();
+      setPassReveal(false);
+    } else if (isHost) {
+      void hostBeginVote(lobbyCode);
+    }
+  }, [lobby?.gameState, lobby?.currentRound, local, isHost, lobbyCode]);
+
   useEffect(() => {
     if (lobby?.gameState !== GAME_STATE.VOTING || !lobby.currentRound) return;
     const votes = lobby.currentRound.votes || {};
@@ -325,24 +336,6 @@ export default function LobbyPage() {
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Submit failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onBeginVote = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      if (local) {
-        const res = localBeginVote();
-        if (!res.ok) setError(res.error || "Could not start voting");
-        else setPassReveal(false);
-      } else {
-        const res = await hostBeginVote(lobbyCode);
-        if (!res.ok) setError(res.error || "Could not start voting");
-      }
     } finally {
       setBusy(false);
     }
@@ -694,43 +687,8 @@ export default function LobbyPage() {
             <h2 className="font-display text-2xl leading-snug">
               {lobby.currentRound.question}
             </h2>
+            <p className="text-sm text-[var(--SP-muted)]">Opening votes…</p>
           </div>
-
-          <ol className="space-y-2">
-            {answerOrder.map((ownerId, i) => (
-              <li key={ownerId} className="SP-panel rounded-2xl px-4 py-3">
-                <span className="text-[var(--SP-muted)] mr-2 text-sm tabular-nums">
-                  {i + 1}.
-                </span>
-                <span className="leading-snug">{answers[ownerId] || "(no answer)"}</span>
-              </li>
-            ))}
-          </ol>
-
-          {isHost ? (
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                className="SP-btn w-full"
-                disabled={busy}
-                onClick={onBeginVote}
-              >
-                Start voting
-              </button>
-              <button
-                type="button"
-                className="SP-btn-ghost w-full text-sm"
-                disabled={busy}
-                onClick={onSkip}
-              >
-                Skip question
-              </button>
-            </div>
-          ) : (
-            <p className="text-center text-sm text-[var(--SP-muted)]">
-              Waiting for host to start voting…
-            </p>
-          )}
         </section>
       )}
 

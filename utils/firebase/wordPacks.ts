@@ -1,11 +1,13 @@
 import { createSign } from "crypto";
-import { SP_TABLES } from "@/app/constants";
+import { PACK_META, SP_TABLES } from "@/app/constants";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DATASTORE_SCOPE = "https://www.googleapis.com/auth/datastore";
 
 type FirestoreValue = {
   stringValue?: string;
+  booleanValue?: boolean;
+  integerValue?: string;
   arrayValue?: { values?: FirestoreValue[] };
 };
 
@@ -27,8 +29,12 @@ function projectId(): string {
   return requiredEnv("FIREBASE_PROJECT_ID");
 }
 
-function collectionName(): string {
+function wordsCollection(): string {
   return `projects/${projectId()}/databases/(default)/documents/${SP_TABLES.WORDS}`;
+}
+
+function packsCollection(): string {
+  return `projects/${projectId()}/databases/(default)/documents/${SP_TABLES.PACKS}`;
 }
 
 async function accessToken(): Promise<string> {
@@ -112,12 +118,33 @@ function packFields(category: string, words: string[]) {
   };
 }
 
+function packMetaFields(category: string, words: string[]) {
+  const meta = PACK_META[category] || {
+    label: category
+      .split("_")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" "),
+    blurb: "",
+  };
+  const fields: Record<string, FirestoreValue> = {
+    category: { stringValue: category },
+    label: { stringValue: meta.label },
+    blurb: { stringValue: meta.blurb },
+    count: { integerValue: String(words.length) },
+    updatedAt: { stringValue: new Date().toISOString() },
+  };
+  if ("nsfw" in meta && meta.nsfw) {
+    fields.nsfw = { booleanValue: true };
+  }
+  return fields;
+}
+
 export async function listWordPacks(): Promise<Record<string, string[]>> {
   const packs: Record<string, string[]> = {};
   let pageToken = "";
 
   do {
-    const url = new URL(`https://firestore.googleapis.com/v1/${collectionName()}`);
+    const url = new URL(`https://firestore.googleapis.com/v1/${wordsCollection()}`);
     url.searchParams.set("pageSize", "100");
     if (pageToken) url.searchParams.set("pageToken", pageToken);
     const data = await firestore(url.toString());
@@ -133,42 +160,74 @@ export async function listWordPacks(): Promise<Record<string, string[]>> {
 }
 
 export async function saveWordPack(category: string, words: string[]) {
-  const url = new URL(
-    `https://firestore.googleapis.com/v1/${collectionName()}/${encodeURIComponent(category)}`
+  const wordsUrl = new URL(
+    `https://firestore.googleapis.com/v1/${wordsCollection()}/${encodeURIComponent(category)}`
   );
   for (const field of ["words", "category", "updatedAt"]) {
-    url.searchParams.append("updateMask.fieldPaths", field);
+    wordsUrl.searchParams.append("updateMask.fieldPaths", field);
   }
-  await firestore(url.toString(), {
+  await firestore(wordsUrl.toString(), {
     method: "PATCH",
     body: JSON.stringify({ fields: packFields(category, words) }),
+  });
+
+  const metaUrl = new URL(
+    `https://firestore.googleapis.com/v1/${packsCollection()}/${encodeURIComponent(category)}`
+  );
+  for (const field of ["category", "label", "blurb", "count", "updatedAt", "nsfw"]) {
+    metaUrl.searchParams.append("updateMask.fieldPaths", field);
+  }
+  await firestore(metaUrl.toString(), {
+    method: "PATCH",
+    body: JSON.stringify({ fields: packMetaFields(category, words) }),
   });
 }
 
 export async function deleteWordPack(category: string) {
   await firestore(
-    `https://firestore.googleapis.com/v1/${collectionName()}/${encodeURIComponent(category)}`,
+    `https://firestore.googleapis.com/v1/${wordsCollection()}/${encodeURIComponent(category)}`,
+    { method: "DELETE" },
+    true
+  );
+  await firestore(
+    `https://firestore.googleapis.com/v1/${packsCollection()}/${encodeURIComponent(category)}`,
     { method: "DELETE" },
     true
   );
 }
 
 export async function seedWordPacks(packs: Record<string, string[]>, replace: boolean) {
-  const writes = Object.entries(packs).map(([category, words]) => {
-    const write: {
-      update: { name: string; fields: ReturnType<typeof packFields> };
-      updateMask?: { fieldPaths: string[] };
-    } = {
+  type Write = {
+    update: { name: string; fields: Record<string, FirestoreValue> };
+    updateMask?: { fieldPaths: string[] };
+  };
+
+  const writes: Write[] = [];
+  for (const [category, words] of Object.entries(packs)) {
+    const wordsWrite: Write = {
       update: {
-        name: `${collectionName()}/${category}`,
+        name: `${wordsCollection()}/${category}`,
         fields: packFields(category, words),
       },
     };
     if (!replace) {
-      write.updateMask = { fieldPaths: ["words", "category", "updatedAt"] };
+      wordsWrite.updateMask = { fieldPaths: ["words", "category", "updatedAt"] };
     }
-    return write;
-  });
+    writes.push(wordsWrite);
+
+    const metaWrite: Write = {
+      update: {
+        name: `${packsCollection()}/${category}`,
+        fields: packMetaFields(category, words),
+      },
+    };
+    if (!replace) {
+      metaWrite.updateMask = {
+        fieldPaths: ["category", "label", "blurb", "count", "updatedAt", "nsfw"],
+      };
+    }
+    writes.push(metaWrite);
+  }
 
   await firestore(
     `https://firestore.googleapis.com/v1/projects/${projectId()}/databases/(default)/documents:commit`,

@@ -447,19 +447,24 @@ function buildRound(
   return round;
 }
 
-function transitionToRevealAnon(lobby: Lobby): {
+/** Lock answers and open voting (anonymous board = vote UI). No host gate. */
+function transitionToVoting(lobby: Lobby): {
   answers: RoundAnswers;
   answerOrder: string[];
   votes: RoundVotes;
-  hotseatVoterId: null;
+  hotseatVoterId: string | null;
 } {
   const players = lobby.players || [];
   const answers = fillMissingAnswers(players, lobby.currentRound?.answers || {});
+  const hotseatVoterId =
+    lobby.playMode === PLAY_MODE.HOTSEAT && players[0]
+      ? players[0].userId
+      : null;
   return {
     answers,
     answerOrder: shuffleIds(players.map((p) => p.userId)),
     votes: {},
-    hotseatVoterId: null,
+    hotseatVoterId,
   };
 }
 
@@ -526,18 +531,18 @@ export async function submitAnswer(
     };
 
     if (allPlayersAnswered(players, answers)) {
-      const next = transitionToRevealAnon({
+      const next = transitionToVoting({
         ...lobby,
         currentRound: { ...lobby.currentRound, answers },
       });
       tx.update(lobbyRef, {
-        gameState: GAME_STATE.REVEAL_ANON,
+        gameState: GAME_STATE.VOTING,
         currentRound: {
           ...lobby.currentRound,
           answers: next.answers,
           answerOrder: next.answerOrder,
           votes: next.votes,
-          hotseatVoterId: null,
+          hotseatVoterId: next.hotseatVoterId,
           scoresDelta: {},
         },
       });
@@ -562,15 +567,15 @@ export async function lockAnswersIfNeeded(lobbyCode: string) {
     const timedOut = Date.now() >= lobby.currentRound.endsAt;
     if (!allDone && !timedOut) return;
 
-    const next = transitionToRevealAnon(lobby);
+    const next = transitionToVoting(lobby);
     tx.update(lobbyRef, {
-      gameState: GAME_STATE.REVEAL_ANON,
+      gameState: GAME_STATE.VOTING,
       currentRound: {
         ...lobby.currentRound,
         answers: next.answers,
         answerOrder: next.answerOrder,
         votes: next.votes,
-        hotseatVoterId: null,
+        hotseatVoterId: next.hotseatVoterId,
         scoresDelta: {},
       },
     });

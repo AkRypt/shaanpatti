@@ -132,6 +132,14 @@ export default function HomePage() {
         <p className="mb-3 text-xs uppercase tracking-[0.35em] text-[var(--SP-muted)]">
           AkxH Games
         </p>
+        {/* Local preview mark — matches ink/lime theme */}
+        <img
+          src="/shaanpatti-logo.svg"
+          alt=""
+          width={72}
+          height={72}
+          className="mx-auto mb-4 h-[72px] w-[72px] animate-scaleIn"
+        />
         <h1 className="SP-brand text-6xl sm:text-7xl leading-none animate-scaleIn">
           Shaanpatti
         </h1>

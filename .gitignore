@@ -33,3 +33,7 @@ shaanpatti-dev.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local screenshot / verify scratch
+.shot-tmp/
+
