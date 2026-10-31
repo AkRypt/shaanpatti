@@ -36,6 +36,7 @@ import {
   localAddPlayer,
   localBeginVote,
   localCastVote,
+  localEnsureHotseatVoter,
   localHostNextRound,
   localLockAnswersIfNeeded,
   localLockVotesIfNeeded,
@@ -149,15 +150,28 @@ export default function LobbyPage() {
   }, [now, lobby?.gameState, lobby?.currentRound?.endsAt, local, lobbyCode]);
 
   // Legacy / in-flight lobbies stuck on reveal_anon: open voting without a host tap.
+  // Depend only on gameState so we don't re-fire hostBeginVote (which clears votes).
   useEffect(() => {
-    if (lobby?.gameState !== GAME_STATE.REVEAL_ANON || !lobby.currentRound) return;
+    if (lobby?.gameState !== GAME_STATE.REVEAL_ANON) return;
     if (local) {
       localBeginVote();
       setPassReveal(false);
     } else if (isHost) {
       void hostBeginVote(lobbyCode);
     }
-  }, [lobby?.gameState, lobby?.currentRound, local, isHost, lobbyCode]);
+  }, [lobby?.gameState, local, isHost, lobbyCode]);
+
+  // Pass-and-play: if hotseat pointer is missing/stale, point at host or next unvoted player.
+  useEffect(() => {
+    if (!local || lobby?.gameState !== GAME_STATE.VOTING) return;
+    localEnsureHotseatVoter();
+  }, [
+    local,
+    lobby?.gameState,
+    lobby?.currentRound?.hotseatVoterId,
+    lobby?.currentRound?.votes,
+    lobby?.players,
+  ]);
 
   useEffect(() => {
     if (lobby?.gameState !== GAME_STATE.VOTING || !lobby.currentRound) return;
@@ -342,20 +356,41 @@ export default function LobbyPage() {
   };
 
   const onVote = async (answerOwnerId: string) => {
-    if (!lobby?.currentRound) return;
+    if (!lobby?.currentRound || busy) return;
     if (local) {
-      if (!hotseatVoterId) return;
-      const res = localCastVote(hotseatVoterId, answerOwnerId);
-      if (res.ok) {
+      // Repair stale/null hotseat (host must be able to vote like anyone else).
+      const voterId =
+        localEnsureHotseatVoter() ||
+        hotseatVoterId ||
+        lobby.hostId ||
+        players[0]?.userId ||
+        null;
+      if (!voterId) {
+        setError("No voter ready — try again.");
+        return;
+      }
+      try {
+        const res = localCastVote(voterId, answerOwnerId);
+        if (!res.ok) {
+          setError(res.error || "Vote failed");
+          return;
+        }
         trackVoteCast("pass_and_play");
+        setError("");
         setPassReveal(false);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Vote failed");
       }
       return;
     }
-    if (!userId) return;
+    if (!userId) {
+      setError("Missing player id — refresh and try again.");
+      return;
+    }
     try {
       await castVote(lobbyCode, userId, answerOwnerId);
       trackVoteCast("online");
+      setError("");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Vote failed");
     }
@@ -737,8 +772,9 @@ export default function LobbyPage() {
               <div className="space-y-2 flex-1">
                 {answerOrder.map((ownerId) => {
                   const text = answers[ownerId] || "(no answer)";
+                  // Local: highlight only while this voter still has the phone (clears on pass).
                   const selected = local
-                    ? false
+                    ? !!(hotseatVoterId && votes[hotseatVoterId] === ownerId)
                     : myVote === ownerId;
                   return (
                     <button

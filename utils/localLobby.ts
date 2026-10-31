@@ -159,6 +159,28 @@ function allPlayersVoted(players: Player[], votes: RoundVotes): boolean {
   return players.every((p) => !!votes[p.userId]);
 }
 
+/** First hotseat voter — host included like any other player (never skip-only). */
+function firstVoterId(lobby: Lobby): string | null {
+  const players = lobby.players || [];
+  if (!players.length) return null;
+  const host = players.find((p) => p.userId === lobby.hostId);
+  return host?.userId || players[0].userId;
+}
+
+function nextUnvotedPlayerId(
+  players: Player[],
+  votes: RoundVotes,
+  fromVoterId: string
+): string | null {
+  const idx = players.findIndex((p) => p.userId === fromVoterId);
+  const start = idx >= 0 ? idx : -1;
+  for (let step = 1; step <= players.length; step++) {
+    const cand = players[(start + step) % players.length];
+    if (cand && !votes[cand.userId]) return cand.userId;
+  }
+  return null;
+}
+
 function finishAnswering(lobby: Lobby) {
   const players = lobby.players || [];
   const answers = fillMissingAnswers(players, lobby.currentRound?.answers || {});
@@ -168,7 +190,8 @@ function finishAnswering(lobby: Lobby) {
   lobby.currentRound.votes = {};
   lobby.currentRound.scoresDelta = {};
   // Skip host "Start voting" gate — anonymous board is the voting screen.
-  lobby.currentRound.hotseatVoterId = players[0]?.userId || null;
+  // Host votes first like everyone else (separate from Skip question).
+  lobby.currentRound.hotseatVoterId = firstVoterId(lobby);
   lobby.gameState = GAME_STATE.VOTING;
 }
 
@@ -242,7 +265,7 @@ function buildRound(
     endsAt: now + timer * 1000,
     answers: {},
     votes: {},
-    hotseatVoterId: lobby.players?.[0]?.userId || null,
+    hotseatVoterId: firstVoterId(lobby),
   };
 }
 
@@ -317,9 +340,28 @@ export function localBeginVote() {
   }
   lobby.gameState = GAME_STATE.VOTING;
   lobby.currentRound.votes = {};
-  lobby.currentRound.hotseatVoterId = lobby.players?.[0]?.userId || null;
+  lobby.currentRound.hotseatVoterId = firstVoterId(lobby);
   persist(lobby);
   return { ok: true as const };
+}
+
+/** Repair missing/stale hotseat pointer so host (and others) can cast votes. */
+export function localEnsureHotseatVoter(): string | null {
+  const lobby = getLobby();
+  if (lobby.gameState !== GAME_STATE.VOTING || !lobby.currentRound) return null;
+  const players = lobby.players || [];
+  const votes = lobby.currentRound.votes || {};
+  const current = lobby.currentRound.hotseatVoterId;
+  // Keep current voter even if they already voted (allows change before pass).
+  if (current && players.some((p) => p.userId === current)) return current;
+
+  const next =
+    players.find((p) => !votes[p.userId]) || firstVoterId(lobby);
+  if (next !== current) {
+    lobby.currentRound.hotseatVoterId = next;
+    persist(lobby);
+  }
+  return next;
 }
 
 export function localCastVote(voterId: string, answerOwnerId: string) {
@@ -327,18 +369,28 @@ export function localCastVote(voterId: string, answerOwnerId: string) {
   if (lobby.gameState !== GAME_STATE.VOTING || !lobby.currentRound) {
     return { ok: false as const, error: "Not voting" };
   }
+  const players = lobby.players || [];
+  // Host is a normal voter — never reject by isHost/hostId.
+  if (!players.some((p) => p.userId === voterId)) {
+    return { ok: false as const, error: "Unknown voter" };
+  }
+  if (!players.some((p) => p.userId === answerOwnerId)) {
+    return { ok: false as const, error: "Unknown answer" };
+  }
+
   lobby.currentRound.votes = {
     ...(lobby.currentRound.votes || {}),
     [voterId]: answerOwnerId,
   };
 
-  const players = lobby.players || [];
   if (allPlayersVoted(players, lobby.currentRound.votes)) {
     finishVoting(lobby);
   } else {
-    const idx = players.findIndex((p) => p.userId === voterId);
-    const next = players[idx + 1];
-    lobby.currentRound.hotseatVoterId = next?.userId || null;
+    lobby.currentRound.hotseatVoterId = nextUnvotedPlayerId(
+      players,
+      lobby.currentRound.votes,
+      voterId
+    );
   }
   persist(lobby);
   return { ok: true as const };

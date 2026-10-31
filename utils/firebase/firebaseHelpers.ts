@@ -153,6 +153,28 @@ function allPlayersVoted(players: Player[], votes: RoundVotes): boolean {
   return players.every((p) => !!votes[p.userId]);
 }
 
+/** Prefer host as first hotseat voter — host votes like any other player. */
+function firstVoterId(lobby: Lobby): string | null {
+  const players = lobby.players || [];
+  if (!players.length) return null;
+  const host = players.find((p) => p.userId === lobby.hostId);
+  return host?.userId || players[0].userId;
+}
+
+function nextUnvotedPlayerId(
+  players: Player[],
+  votes: RoundVotes,
+  fromVoterId: string
+): string | null {
+  const idx = players.findIndex((p) => p.userId === fromVoterId);
+  const start = idx >= 0 ? idx : -1;
+  for (let step = 1; step <= players.length; step++) {
+    const cand = players[(start + step) % players.length];
+    if (cand && !votes[cand.userId]) return cand.userId;
+  }
+  return null;
+}
+
 /**
  * No Firebase Auth. Load local UUID + display name from localStorage only.
  * Optional Firestore user docs are written only when joining online lobbies.
@@ -441,8 +463,9 @@ function buildRound(
     answers: {},
     votes: {},
   };
-  if (playMode === PLAY_MODE.HOTSEAT && players[0]) {
-    round.hotseatVoterId = players[0].userId;
+  if (playMode === PLAY_MODE.HOTSEAT) {
+    const host = players.find((p) => p.isHost) || players[0];
+    if (host) round.hotseatVoterId = host.userId;
   }
   return round;
 }
@@ -456,10 +479,9 @@ function transitionToVoting(lobby: Lobby): {
 } {
   const players = lobby.players || [];
   const answers = fillMissingAnswers(players, lobby.currentRound?.answers || {});
+  // Host is included in voting; hotseat starts with host when pass-and-play.
   const hotseatVoterId =
-    lobby.playMode === PLAY_MODE.HOTSEAT && players[0]
-      ? players[0].userId
-      : null;
+    lobby.playMode === PLAY_MODE.HOTSEAT ? firstVoterId(lobby) : null;
   return {
     answers,
     answerOrder: shuffleIds(players.map((p) => p.userId)),
@@ -598,8 +620,8 @@ export async function hostBeginVote(lobbyCode: string) {
     gameState: GAME_STATE.VOTING,
     "currentRound.votes": {},
   };
-  if (lobby.playMode === PLAY_MODE.HOTSEAT && lobby.players?.[0]) {
-    patch["currentRound.hotseatVoterId"] = lobby.players[0].userId;
+  if (lobby.playMode === PLAY_MODE.HOTSEAT) {
+    patch["currentRound.hotseatVoterId"] = firstVoterId(lobby);
   } else {
     patch["currentRound.hotseatVoterId"] = null;
   }
@@ -620,12 +642,20 @@ export async function castVote(
     if (lobby.gameState !== GAME_STATE.VOTING || !lobby.currentRound) {
       throw new Error("Not voting");
     }
+    const players = lobby.players || [];
+    // Host casts votes like any other player — do not exclude hostId/isHost.
+    if (!players.some((p) => p.userId === voterId)) {
+      throw new Error("Unknown voter");
+    }
+    if (!players.some((p) => p.userId === answerOwnerId)) {
+      throw new Error("Unknown answer");
+    }
     const votes = {
       ...(lobby.currentRound.votes || {}),
       [voterId]: answerOwnerId,
     };
 
-    if (allPlayersVoted(lobby.players || [], votes)) {
+    if (allPlayersVoted(players, votes)) {
       const { scoresDelta, scores } = applyVoteFinish(lobby, votes);
       tx.update(lobbyRef, {
         gameState: GAME_STATE.REVEAL_NAMES,
@@ -638,7 +668,15 @@ export async function castVote(
         },
       });
     } else {
-      tx.update(lobbyRef, { "currentRound.votes": votes });
+      const patch: Record<string, unknown> = { "currentRound.votes": votes };
+      if (lobby.playMode === PLAY_MODE.HOTSEAT) {
+        patch["currentRound.hotseatVoterId"] = nextUnvotedPlayerId(
+          players,
+          votes,
+          voterId
+        );
+      }
+      tx.update(lobbyRef, patch);
     }
   });
 }
